@@ -1,14 +1,21 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Camera, CameraOff } from 'lucide-react';
+import { Camera, CameraOff, Eye, EyeOff } from 'lucide-react';
+import { EyeDetectionResult } from '../utils/eyeDetection';
 
 interface WebcamCaptureProps {
   onFrame: (imageData: ImageData) => void;
   isActive: boolean;
+  eyeDetectionResult?: EyeDetectionResult;
 }
 
-export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onFrame, isActive }) => {
+export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ 
+  onFrame, 
+  isActive, 
+  eyeDetectionResult 
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isWebcamActive, setIsWebcamActive] = useState(false);
   const [error, setError] = useState<string>('');
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,6 +95,68 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onFrame, isActive 
     };
   }, [isActive, isWebcamActive, onFrame]);
 
+  // Draw eye detection overlay
+  useEffect(() => {
+    if (overlayCanvasRef.current && videoRef.current && eyeDetectionResult) {
+      const canvas = overlayCanvasRef.current;
+      const video = videoRef.current;
+      const ctx = canvas.getContext('2d');
+
+      if (ctx && video.videoWidth && video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // Clear previous drawings
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (eyeDetectionResult.faceDetected) {
+          // Draw left eye
+          if (eyeDetectionResult.leftEye.boundingBox.width > 0) {
+            const leftBox = eyeDetectionResult.leftEye.boundingBox;
+            ctx.strokeStyle = eyeDetectionResult.leftEye.isOpen ? '#10B981' : '#EF4444'; // Green if open, red if closed
+            ctx.lineWidth = 3;
+            ctx.strokeRect(leftBox.x - 10, leftBox.y - 5, leftBox.width + 20, leftBox.height + 10);
+            
+            // Add eye status text
+            ctx.fillStyle = eyeDetectionResult.leftEye.isOpen ? '#10B981' : '#EF4444';
+            ctx.font = '14px Arial';
+            ctx.fillText(
+              eyeDetectionResult.leftEye.isOpen ? 'OPEN' : 'CLOSED',
+              leftBox.x,
+              leftBox.y - 10
+            );
+          }
+
+          // Draw right eye
+          if (eyeDetectionResult.rightEye.boundingBox.width > 0) {
+            const rightBox = eyeDetectionResult.rightEye.boundingBox;
+            ctx.strokeStyle = eyeDetectionResult.rightEye.isOpen ? '#10B981' : '#EF4444'; // Green if open, red if closed
+            ctx.lineWidth = 3;
+            ctx.strokeRect(rightBox.x - 10, rightBox.y - 5, rightBox.width + 20, rightBox.height + 10);
+            
+            // Add eye status text
+            ctx.fillStyle = eyeDetectionResult.rightEye.isOpen ? '#10B981' : '#EF4444';
+            ctx.font = '14px Arial';
+            ctx.fillText(
+              eyeDetectionResult.rightEye.isOpen ? 'OPEN' : 'CLOSED',
+              rightBox.x,
+              rightBox.y - 10
+            );
+          }
+
+          // Draw EAR values
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '12px Arial';
+          ctx.fillRect(10, 10, 200, 60);
+          ctx.fillStyle = '#000000';
+          ctx.fillText(`Left EAR: ${eyeDetectionResult.eyeAspectRatio.left.toFixed(3)}`, 15, 25);
+          ctx.fillText(`Right EAR: ${eyeDetectionResult.eyeAspectRatio.right.toFixed(3)}`, 15, 40);
+          ctx.fillText(`Avg EAR: ${eyeDetectionResult.eyeAspectRatio.average.toFixed(3)}`, 15, 55);
+        }
+      }
+    }
+  }, [eyeDetectionResult]);
+
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-6 rounded-xl">
@@ -111,6 +180,14 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onFrame, isActive 
           className="w-full h-auto max-w-full"
           style={{ aspectRatio: '4/3' }}
         />
+        
+        {/* Eye detection overlay */}
+        <canvas
+          ref={overlayCanvasRef}
+          className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          style={{ aspectRatio: '4/3' }}
+        />
+        
         <canvas
           ref={canvasRef}
           className="hidden"
@@ -127,6 +204,25 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onFrame, isActive 
             <span>{isWebcamActive ? 'LIVE' : 'OFF'}</span>
           </div>
         </div>
+
+        {/* Eye detection status */}
+        {eyeDetectionResult && eyeDetectionResult.faceDetected && (
+          <div className="absolute top-3 left-3">
+            <div className="flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium bg-blue-500 text-white">
+              {eyeDetectionResult.leftEye.isOpen && eyeDetectionResult.rightEye.isOpen ? (
+                <Eye className="h-3 w-3" />
+              ) : (
+                <EyeOff className="h-3 w-3" />
+              )}
+              <span>
+                {eyeDetectionResult.leftEye.isOpen && eyeDetectionResult.rightEye.isOpen 
+                  ? 'EYES OPEN' 
+                  : 'EYES CLOSED'
+                }
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Loading overlay */}
         {!isWebcamActive && isActive && (
